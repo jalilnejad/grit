@@ -250,20 +250,39 @@ module Grit
 
     def sh(command)
       ret, err = '', ''
-      Open3.popen3(command) do |_, stdout, stderr|
-        Timeout.timeout(self.class.git_timeout) do
-          while tmp = stdout.read(1024)
-            ret += tmp
-            if (@bytes_read += tmp.size) > self.class.git_max_size
-              bytes = @bytes_read
-              @bytes_read = 0
-              raise GitTimeout.new(command, bytes)
+      if RUBY_PLATFORM.downcase =~ /mswin(?!ce)|mingw|bccwin|cygwin/
+        Open3.popen3(command, 'b') do |_, stdout, stderr|
+          Timeout.timeout(self.class.git_timeout) do
+            while tmp = stdout.read(1024)
+              ret += tmp
+              if (@bytes_read += tmp.size) > self.class.git_max_size
+                bytes = @bytes_read
+                @bytes_read = 0
+                raise GitTimeout.new(command, bytes)
+              end
             end
           end
-        end
 
-        while tmp = stderr.read(1024)
-          err += tmp
+          while tmp = stderr.read(1024)
+            err += tmp
+          end
+        end
+      else
+        Open3.popen3(command) do |_, stdout, stderr|
+          Timeout.timeout(self.class.git_timeout) do
+            while tmp = stdout.read(1024)
+              ret += tmp
+              if (@bytes_read += tmp.size) > self.class.git_max_size
+                bytes = @bytes_read
+                @bytes_read = 0
+                raise GitTimeout.new(command, bytes)
+              end
+            end
+          end
+
+          while tmp = stderr.read(1024)
+            err += tmp
+          end
         end
       end
       [ret, err]
@@ -275,13 +294,25 @@ module Grit
 
     def wild_sh(command)
       ret, err = '', ''
-      Open3.popen3(command) do |_, stdout, stderr|
-        while tmp = stdout.read(1024)
-          ret += tmp
-        end
+      if RUBY_PLATFORM.downcase =~ /mswin(?!ce)|mingw|bccwin|cygwin/
+        Open3.popen3(command, 'b') do |_, stdout, stderr|
+          while tmp = stdout.read(1024)
+            ret += tmp
+          end
 
-        while tmp = stderr.read(1024)
-          err += tmp
+          while tmp = stderr.read(1024)
+            err += tmp
+          end
+        end
+      else
+        Open3.popen3(command) do |_, stdout, stderr|
+          while tmp = stdout.read(1024)
+            ret += tmp
+          end
+
+          while tmp = stderr.read(1024)
+            err += tmp
+          end
         end
       end
       [ret, err]
@@ -302,7 +333,7 @@ module Grit
             # ignore
           else
             val = options.delete(opt)
-            args << "-#{opt.to_s} '#{e(val)}'"
+            args << "-#{opt.to_s} \"#{e(val)}\""
           end
         else
           if options[opt] == true
@@ -311,7 +342,7 @@ module Grit
             # ignore
           else
             val = options.delete(opt)
-            args << "--#{opt.to_s.gsub(/_/, '-')}='#{e(val)}'"
+            args << "--#{opt.to_s.gsub(/_/, '-')}=\"#{e(val)}\""
           end
         end
       end
